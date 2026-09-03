@@ -38,6 +38,7 @@ export type Op =
   | { type: 'moveCard'; cardId: string; toColumnId: string; toIndex: number }
   | { type: 'editCard'; cardId: string; title?: string; description?: string }
   | { type: 'deleteCard'; cardId: string }
+  | { type: 'duplicateCard'; cardId: string; newCardId: string }
   | { type: 'createColumn'; columnId: string; title: string; index?: number }
   | { type: 'renameColumn'; columnId: string; title: string }
   | { type: 'deleteColumn'; columnId: string }

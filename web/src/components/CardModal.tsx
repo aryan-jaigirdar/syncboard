@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Card } from '../../../shared/types';
 import { LIMITS } from '../../../shared/types';
-import { TrashIcon } from './icons';
+import { CopyIcon, TrashIcon } from './icons';
 
 interface CardModalProps {
   card: Card;
   onSave(title: string, description: string): void;
   onDelete(): void;
+  onDuplicate(): void;
   onClose(): void;
 }
 
-export function CardModal({ card, onSave, onDelete, onClose }: CardModalProps) {
+export function CardModal({ card, onSave, onDelete, onDuplicate, onClose }: CardModalProps) {
   const [title, setTitle] = useState(card.title);
   const [description, setDescription] = useState(card.description);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -99,6 +100,12 @@ export function CardModal({ card, onSave, onDelete, onClose }: CardModalProps) {
               >
                 <TrashIcon size={14} />
                 Delete card
+              </button>
+            )}
+            {!confirmingDelete && (
+              <button type="button" className="btn btn-ghost" onClick={onDuplicate}>
+                <CopyIcon size={14} />
+                Duplicate
               </button>
             )}
             <span className="modal-footer-spacer" />

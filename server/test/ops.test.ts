@@ -233,6 +233,58 @@ describe('deleteCard', () => {
   });
 });
 
+describe('duplicateCard', () => {
+  it('copies the title and description of the source card', () => {
+    const next = mustApply(board(), {
+      type: 'duplicateCard',
+      cardId: 'cardB1',
+      newCardId: 'cardB1copy',
+    });
+    const copy = next.cards.find((c) => c.id === 'cardB1copy');
+    expect(copy?.title).toBe('Started');
+    expect(copy?.description).toBe('wip');
+    expect(copy?.columnId).toBe('colB');
+  });
+
+  it('places the copy directly below the original and renumbers the column', () => {
+    const next = mustApply(board(), {
+      type: 'duplicateCard',
+      cardId: 'cardA2',
+      newCardId: 'cardA2copy',
+    });
+    expect(idsIn(next, 'colA')).toEqual(['cardA1', 'cardA2', 'cardA2copy', 'cardA3']);
+    expect(cardsInColumn(next, 'colA').map((c) => c.order)).toEqual([0, 1, 2, 3]);
+  });
+
+  it('duplicates the last card to the end of the column', () => {
+    const next = mustApply(board(), {
+      type: 'duplicateCard',
+      cardId: 'cardA3',
+      newCardId: 'cardA3copy',
+    });
+    expect(idsIn(next, 'colA')).toEqual(['cardA1', 'cardA2', 'cardA3', 'cardA3copy']);
+  });
+
+  it('rejects duplicating a missing card gracefully', () => {
+    const withoutCard = mustApply(board(), { type: 'deleteCard', cardId: 'cardA1' });
+    const result = applyOp(withoutCard, {
+      type: 'duplicateCard',
+      cardId: 'cardA1',
+      newCardId: 'cardA1copy',
+    });
+    expect(result).toEqual({ ok: false, reason: 'card_not_found' });
+  });
+
+  it('rejects a copy id that already exists', () => {
+    const result = applyOp(board(), {
+      type: 'duplicateCard',
+      cardId: 'cardA1',
+      newCardId: 'cardA2',
+    });
+    expect(result).toEqual({ ok: false, reason: 'duplicate_id' });
+  });
+});
+
 describe('column ops', () => {
   it('creates a column at the end by default', () => {
     const next = mustApply(board(), { type: 'createColumn', columnId: 'colD', title: 'Review' });

@@ -78,6 +78,10 @@ export function parseOp(value: unknown): Op | null {
       if (!isValidId(value['cardId'])) return null;
       return { type: 'deleteCard', cardId: value['cardId'] };
     }
+    case 'duplicateCard': {
+      if (!isValidId(value['cardId']) || !isValidId(value['newCardId'])) return null;
+      return { type: 'duplicateCard', cardId: value['cardId'], newCardId: value['newCardId'] };
+    }
     case 'createColumn': {
       if (!isValidId(value['columnId'])) return null;
       const title = asBoundedString(value['title'], LIMITS.titleLength);

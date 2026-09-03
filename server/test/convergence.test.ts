@@ -233,6 +233,81 @@ describe('two-client convergence', () => {
   });
 });
 
+describe('duplicateCard', () => {
+  it('copies the card and bumps the version by exactly one', () => {
+    const { server, alice, everyone } = setup();
+    const before = server.state.version;
+
+    alice.propose(
+      { type: 'duplicateCard', cardId: 'cardX', newCardId: 'cardXcopy' },
+      server,
+      everyone,
+    );
+    alice.drain();
+
+    expect(server.state.version).toBe(before + 1);
+    expect(server.applied).toBe(1);
+    const original = server.state.cards.find((c) => c.id === 'cardX');
+    const copy = server.state.cards.find((c) => c.id === 'cardXcopy');
+    expect(copy?.title).toBe(original?.title);
+    expect(copy?.description).toBe(original?.description);
+    expect(copy?.columnId).toBe(original?.columnId);
+    // The copy sits directly below the original in the same column.
+    expect(cardsInColumn(server.state, 'colA').map((c) => c.id)).toEqual([
+      'cardX',
+      'cardXcopy',
+      'cardY',
+    ]);
+    expect(alice.pending).toHaveLength(0);
+    expect(canonical(alice.view())).toEqual(canonical(server.state));
+  });
+
+  it('converges when two clients duplicate different cards concurrently', () => {
+    const { server, alice, bob, everyone } = setup();
+
+    alice.propose(
+      { type: 'duplicateCard', cardId: 'cardX', newCardId: 'cardXdup' },
+      server,
+      everyone,
+    );
+    bob.propose(
+      { type: 'duplicateCard', cardId: 'cardZ', newCardId: 'cardZdup' },
+      server,
+      everyone,
+    );
+    alice.drain();
+    bob.drain();
+
+    expect(alice.pending).toHaveLength(0);
+    expect(bob.pending).toHaveLength(0);
+    expect(canonical(alice.view())).toEqual(canonical(server.state));
+    expect(canonical(bob.view())).toEqual(canonical(server.state));
+    expect(server.state.version).toBe(2);
+  });
+
+  it('rejects duplicating a card another client already deleted', () => {
+    const { server, alice, bob, everyone } = setup();
+
+    // Bob deletes cardX; the delete reaches the server first.
+    bob.propose({ type: 'deleteCard', cardId: 'cardX' }, server, everyone);
+    // Alice has not seen the delete and optimistically duplicates the same card.
+    alice.propose(
+      { type: 'duplicateCard', cardId: 'cardX', newCardId: 'cardXdup' },
+      server,
+      everyone,
+    );
+
+    alice.drain();
+    bob.drain();
+
+    expect(server.rejected).toBe(1);
+    expect(alice.pending).toHaveLength(0);
+    expect(server.state.cards.some((c) => c.id === 'cardXdup')).toBe(false);
+    expect(canonical(alice.view())).toEqual(canonical(server.state));
+    expect(canonical(bob.view())).toEqual(canonical(server.state));
+  });
+});
+
 describe('randomized interleaving fuzz', () => {
   // Deterministic PRNG so failures are reproducible.
   function mulberry32(seed: number): () => number {

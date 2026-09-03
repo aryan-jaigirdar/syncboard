@@ -122,6 +122,24 @@ export function applyOp(prev: BoardState, op: Op): ApplyResult {
       return { ok: true, state };
     }
 
+    case 'duplicateCard': {
+      const source = state.cards.find((c) => c.id === op.cardId);
+      if (!source) return fail('card_not_found');
+      if (state.cards.some((c) => c.id === op.newCardId)) return fail('duplicate_id');
+      if (state.cards.length >= LIMITS.cardsPerBoard) return fail('limit_exceeded');
+
+      state.cards.push({
+        id: op.newCardId,
+        columnId: source.columnId,
+        title: source.title,
+        description: source.description,
+        // Sit the copy directly below the original; renumbering makes it exact.
+        order: source.order + 0.5,
+      });
+      renumberColumnCards(state, source.columnId);
+      return { ok: true, state };
+    }
+
     case 'createColumn': {
       if (!validTitle(op.title)) return fail('invalid_op');
       if (state.columns.some((c) => c.id === op.columnId)) return fail('duplicate_id');

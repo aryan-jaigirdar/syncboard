@@ -343,6 +343,14 @@ export function BoardPage({ boardId }: BoardPageProps) {
             client.intent({ type: 'deleteCard', cardId: editingCard.id });
             setEditingCardId(null);
           }}
+          onDuplicate={() => {
+            client.intent({
+              type: 'duplicateCard',
+              cardId: editingCard.id,
+              newCardId: genId(12),
+            });
+            setEditingCardId(null);
+          }}
           onClose={() => setEditingCardId(null)}
         />
       )}

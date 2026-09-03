@@ -62,7 +62,7 @@ The repository is an npm workspace with three parts:
 
 ### Sync protocol
 
-Every board has a version number that increases by exactly one per accepted op. Clients never mutate state directly; they send intents (`createCard`, `moveCard`, `editCard`, `deleteCard`, `createColumn`, `renameColumn`, `deleteColumn`, `reorderColumn`) tagged with a client-generated `opId` and the version they were based on. The server applies intents in arrival order against its current state, so concurrent edits are serialized and every client converges on the same history.
+Every board has a version number that increases by exactly one per accepted op. Clients never mutate state directly; they send intents (`createCard`, `moveCard`, `editCard`, `deleteCard`, `duplicateCard`, `createColumn`, `renameColumn`, `deleteColumn`, `reorderColumn`) tagged with a client-generated `opId` and the version they were based on. The server applies intents in arrival order against its current state, so concurrent edits are serialized and every client converges on the same history.
 
 ```mermaid
 sequenceDiagram

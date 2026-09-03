@@ -163,6 +163,17 @@ export class BoardStore {
           this.syncCardPositions(next, before.columnId);
           break;
         }
+        case 'duplicateCard': {
+          const card = next.cards.find((c) => c.id === op.newCardId);
+          if (!card) throw new Error('duplicateCard persisted without a card');
+          this.db
+            .prepare(
+              'INSERT INTO cards (id, board_id, column_id, title, description, ord) VALUES (?, ?, ?, ?, ?, ?)',
+            )
+            .run(card.id, boardId, card.columnId, card.title, card.description, card.order);
+          this.syncCardPositions(next, card.columnId);
+          break;
+        }
         case 'createColumn': {
           const column = next.columns.find((c) => c.id === op.columnId);
           if (!column) throw new Error('createColumn persisted without a column');
