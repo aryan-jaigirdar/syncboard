@@ -339,6 +339,9 @@ export function BoardPage({ boardId }: BoardPageProps) {
           onSave={(title, description) =>
             client.intent({ type: 'editCard', cardId: editingCard.id, title, description })
           }
+          onSetLabel={(label) =>
+            client.intent({ type: 'setCardLabel', cardId: editingCard.id, label })
+          }
           onDelete={() => {
             client.intent({ type: 'deleteCard', cardId: editingCard.id });
             setEditingCardId(null);

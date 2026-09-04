@@ -12,7 +12,8 @@ There are no accounts and no setup. Anyone with a board link can edit that board
 - Live presence avatars and live cursors for everyone on the board
 - Automatic reconnect with exponential backoff and incremental catch-up from an op log
 - Smooth pointer-based drag and drop for cards (within and across columns) and for column reordering
-- Card edit modal, inline column rename, column add and delete with confirmation
+- Card edit modal with a color label picker, inline column rename, column add and delete with confirmation
+- Optional color labels on cards, shown as a colored strip and chosen from a fixed palette
 - SQLite persistence, so boards survive server restarts
 
 ## Quickstart
@@ -62,7 +63,7 @@ The repository is an npm workspace with three parts:
 
 ### Sync protocol
 
-Every board has a version number that increases by exactly one per accepted op. Clients never mutate state directly; they send intents (`createCard`, `moveCard`, `editCard`, `deleteCard`, `duplicateCard`, `createColumn`, `renameColumn`, `deleteColumn`, `reorderColumn`) tagged with a client-generated `opId` and the version they were based on. The server applies intents in arrival order against its current state, so concurrent edits are serialized and every client converges on the same history.
+Every board has a version number that increases by exactly one per accepted op. Clients never mutate state directly; they send intents (`createCard`, `moveCard`, `editCard`, `deleteCard`, `duplicateCard`, `setCardLabel`, `createColumn`, `renameColumn`, `deleteColumn`, `reorderColumn`) tagged with a client-generated `opId` and the version they were based on. The server applies intents in arrival order against its current state, so concurrent edits are serialized and every client converges on the same history.
 
 ```mermaid
 sequenceDiagram
@@ -95,7 +96,8 @@ SQLite schema, written through on every accepted op inside a transaction:
 boards   id TEXT PK, version INTEGER, created_at INTEGER
 columns  id TEXT PK, board_id -> boards (CASCADE), title TEXT, ord INTEGER
 cards    id TEXT PK, board_id -> boards (CASCADE),
-         column_id -> columns (CASCADE), title TEXT, description TEXT, ord INTEGER
+         column_id -> columns (CASCADE), title TEXT, description TEXT, ord INTEGER,
+         label TEXT (one of the fixed palette; defaults to 'none')
 ```
 
 `ord` columns are kept normalized to 0..n-1 within their scope. Active boards live in server memory and are loaded on demand; rooms are evicted a few minutes after the last client leaves (the op log is dropped, persisted state is not).

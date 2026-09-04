@@ -8,8 +8,8 @@
  */
 
 import Database from 'better-sqlite3';
-import type { BoardState, Op } from '../../shared/types.js';
-import { DEFAULT_COLUMN_TITLES } from '../../shared/types.js';
+import type { BoardState, Card, Op } from '../../shared/types.js';
+import { DEFAULT_COLUMN_TITLES, isCardLabel } from '../../shared/types.js';
 import { genBoardId, genId } from '../../shared/ids.js';
 import { cardsInColumn, sortedColumns } from '../../shared/ops.js';
 
@@ -30,6 +30,7 @@ interface CardRow {
   title: string;
   description: string;
   ord: number;
+  label: string;
 }
 
 const SCHEMA = `
@@ -51,7 +52,8 @@ CREATE TABLE IF NOT EXISTS cards (
   column_id TEXT NOT NULL REFERENCES columns(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
-  ord INTEGER NOT NULL
+  ord INTEGER NOT NULL,
+  label TEXT NOT NULL DEFAULT 'none'
 );
 CREATE INDEX IF NOT EXISTS idx_cards_board ON cards(board_id);
 CREATE INDEX IF NOT EXISTS idx_cards_column ON cards(column_id);
@@ -65,6 +67,18 @@ export class BoardStore {
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
     this.db.exec(SCHEMA);
+    this.migrate();
+  }
+
+  /**
+   * Bring an older database up to the current schema. Boards created before a
+   * column existed get it added with its default, so existing rows keep working.
+   */
+  private migrate(): void {
+    const columns = this.db.prepare('PRAGMA table_info(cards)').all() as { name: string }[];
+    if (!columns.some((c) => c.name === 'label')) {
+      this.db.exec("ALTER TABLE cards ADD COLUMN label TEXT NOT NULL DEFAULT 'none'");
+    }
   }
 
   createBoard(): BoardState {
@@ -102,7 +116,7 @@ export class BoardStore {
       .all(id) as ColumnRow[];
     const cards = this.db
       .prepare(
-        'SELECT id, column_id, title, description, ord FROM cards WHERE board_id = ? ORDER BY ord',
+        'SELECT id, column_id, title, description, ord, label FROM cards WHERE board_id = ? ORDER BY ord',
       )
       .all(id) as CardRow[];
 
@@ -110,13 +124,18 @@ export class BoardStore {
       id: board.id,
       version: board.version,
       columns: columns.map((c) => ({ id: c.id, title: c.title, order: c.ord })),
-      cards: cards.map((c) => ({
-        id: c.id,
-        columnId: c.column_id,
-        title: c.title,
-        description: c.description,
-        order: c.ord,
-      })),
+      cards: cards.map((c) => {
+        const card: Card = {
+          id: c.id,
+          columnId: c.column_id,
+          title: c.title,
+          description: c.description,
+          order: c.ord,
+        };
+        // A stored 'none' is the default, so it stays absent in memory.
+        if (isCardLabel(c.label) && c.label !== 'none') card.label = c.label;
+        return card;
+      }),
     };
   }
 
@@ -133,9 +152,17 @@ export class BoardStore {
           if (!card) throw new Error('createCard persisted without a card');
           this.db
             .prepare(
-              'INSERT INTO cards (id, board_id, column_id, title, description, ord) VALUES (?, ?, ?, ?, ?, ?)',
+              'INSERT INTO cards (id, board_id, column_id, title, description, ord, label) VALUES (?, ?, ?, ?, ?, ?, ?)',
             )
-            .run(card.id, boardId, card.columnId, card.title, card.description, card.order);
+            .run(
+              card.id,
+              boardId,
+              card.columnId,
+              card.title,
+              card.description,
+              card.order,
+              card.label ?? 'none',
+            );
           this.syncCardPositions(next, op.columnId);
           break;
         }
@@ -156,6 +183,14 @@ export class BoardStore {
             .run(card.title, card.description, card.id);
           break;
         }
+        case 'setCardLabel': {
+          const card = next.cards.find((c) => c.id === op.cardId);
+          if (!card) throw new Error('setCardLabel persisted without a card');
+          this.db
+            .prepare('UPDATE cards SET label = ? WHERE id = ?')
+            .run(card.label ?? 'none', card.id);
+          break;
+        }
         case 'deleteCard': {
           const before = prev.cards.find((c) => c.id === op.cardId);
           if (!before) throw new Error('deleteCard persisted without a card');
@@ -168,9 +203,17 @@ export class BoardStore {
           if (!card) throw new Error('duplicateCard persisted without a card');
           this.db
             .prepare(
-              'INSERT INTO cards (id, board_id, column_id, title, description, ord) VALUES (?, ?, ?, ?, ?, ?)',
+              'INSERT INTO cards (id, board_id, column_id, title, description, ord, label) VALUES (?, ?, ?, ?, ?, ?, ?)',
             )
-            .run(card.id, boardId, card.columnId, card.title, card.description, card.order);
+            .run(
+              card.id,
+              boardId,
+              card.columnId,
+              card.title,
+              card.description,
+              card.order,
+              card.label ?? 'none',
+            );
           this.syncCardPositions(next, card.columnId);
           break;
         }

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { BoardState, Op } from '../../shared/types.js';
 import { DEFAULT_COLUMN_TITLES } from '../../shared/types.js';
@@ -75,6 +76,95 @@ describe('BoardStore', () => {
     const reloaded = store.loadBoard(state.id);
     expect(reloaded).not.toBeNull();
     expect(reloaded).toEqual(state);
+    store.close();
+  });
+
+  it('roundtrips a card label through a reopen', () => {
+    let store = new BoardStore(dbPath);
+    let state = store.createBoard();
+    const todo = state.columns[0];
+    if (!todo) throw new Error('expected default columns');
+
+    state = applyAndPersist(store, state, {
+      type: 'createCard',
+      cardId: 'cardLbl1',
+      columnId: todo.id,
+      title: 'Needs a color',
+    });
+    state = applyAndPersist(store, state, {
+      type: 'setCardLabel',
+      cardId: 'cardLbl1',
+      label: 'purple',
+    });
+    expect(state.cards.find((c) => c.id === 'cardLbl1')?.label).toBe('purple');
+    store.close();
+
+    store = new BoardStore(dbPath);
+    const reloaded = store.loadBoard(state.id);
+    expect(reloaded).toEqual(state);
+    expect(reloaded?.cards.find((c) => c.id === 'cardLbl1')?.label).toBe('purple');
+    store.close();
+  });
+
+  it('stores a card with no label as the default and reloads it as unlabeled', () => {
+    let store = new BoardStore(dbPath);
+    let state = store.createBoard();
+    const todo = state.columns[0];
+    if (!todo) throw new Error('expected default columns');
+
+    state = applyAndPersist(store, state, {
+      type: 'createCard',
+      cardId: 'cardPln1',
+      columnId: todo.id,
+      title: 'No color here',
+    });
+    store.close();
+
+    store = new BoardStore(dbPath);
+    const reloaded = store.loadBoard(state.id);
+    expect(reloaded).toEqual(state);
+    expect(reloaded?.cards.find((c) => c.id === 'cardPln1')?.label).toBeUndefined();
+    store.close();
+  });
+
+  it('adds the label column to a legacy cards table without one', () => {
+    // Build a database shaped like an older release, before labels existed.
+    const legacy = new Database(dbPath);
+    legacy.exec(`
+      CREATE TABLE boards (id TEXT PRIMARY KEY, version INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL);
+      CREATE TABLE columns (id TEXT PRIMARY KEY, board_id TEXT NOT NULL, title TEXT NOT NULL, ord INTEGER NOT NULL);
+      CREATE TABLE cards (id TEXT PRIMARY KEY, board_id TEXT NOT NULL, column_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', ord INTEGER NOT NULL);
+    `);
+    legacy
+      .prepare('INSERT INTO boards (id, version, created_at) VALUES (?, 0, ?)')
+      .run('legacybd', Date.now());
+    legacy
+      .prepare('INSERT INTO columns (id, board_id, title, ord) VALUES (?, ?, ?, ?)')
+      .run('legcol1', 'legacybd', 'To do', 0);
+    legacy
+      .prepare(
+        'INSERT INTO cards (id, board_id, column_id, title, description, ord) VALUES (?, ?, ?, ?, ?, ?)',
+      )
+      .run('legcard1', 'legacybd', 'legcol1', 'Old card', '', 0);
+    legacy.close();
+
+    // Opening with the current store migrates the schema; the old row loads unlabeled.
+    let store = new BoardStore(dbPath);
+    const loaded = store.loadBoard('legacybd');
+    if (!loaded) throw new Error('expected the legacy board to load');
+    expect(loaded.cards.find((c) => c.id === 'legcard1')?.label).toBeUndefined();
+
+    const labeled = applyAndPersist(store, loaded, {
+      type: 'setCardLabel',
+      cardId: 'legcard1',
+      label: 'orange',
+    });
+    store.close();
+
+    store = new BoardStore(dbPath);
+    const reloaded = store.loadBoard('legacybd');
+    expect(reloaded).toEqual(labeled);
+    expect(reloaded?.cards.find((c) => c.id === 'legcard1')?.label).toBe('orange');
     store.close();
   });
 

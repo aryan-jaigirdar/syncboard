@@ -1,17 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Card } from '../../../shared/types';
-import { LIMITS } from '../../../shared/types';
-import { CopyIcon, TrashIcon } from './icons';
+import type { Card, CardLabel } from '../../../shared/types';
+import { CARD_LABELS, LIMITS } from '../../../shared/types';
+import { LABEL_COLORS } from '../../../shared/color';
+import { CheckIcon, CopyIcon, TrashIcon, XIcon } from './icons';
 
 interface CardModalProps {
   card: Card;
   onSave(title: string, description: string): void;
+  onSetLabel(label: CardLabel): void;
   onDelete(): void;
   onDuplicate(): void;
   onClose(): void;
 }
 
-export function CardModal({ card, onSave, onDelete, onDuplicate, onClose }: CardModalProps) {
+export function CardModal({ card, onSave, onSetLabel, onDelete, onDuplicate, onClose }: CardModalProps) {
   const [title, setTitle] = useState(card.title);
   const [description, setDescription] = useState(card.description);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -32,6 +34,7 @@ export function CardModal({ card, onSave, onDelete, onDuplicate, onClose }: Card
 
   const dirty = title !== card.title || description !== card.description;
   const canSave = title.trim().length > 0;
+  const currentLabel: CardLabel = card.label ?? 'none';
 
   function save() {
     if (!canSave) return;
@@ -77,6 +80,35 @@ export function CardModal({ card, onSave, onDelete, onDuplicate, onClose }: Card
               if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') save();
             }}
           />
+          <span className="modal-label">Label</span>
+          <div className="label-picker" role="group" aria-label="Card label">
+            {CARD_LABELS.map((label) => {
+              const active = currentLabel === label;
+              const color = label === 'none' ? null : LABEL_COLORS[label];
+              const className =
+                'label-swatch' +
+                (label === 'none' ? ' label-swatch-none' : '') +
+                (active ? ' label-swatch-active' : '');
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  className={className}
+                  style={color ? { background: color } : undefined}
+                  aria-label={label === 'none' ? 'No label' : label}
+                  aria-pressed={active}
+                  title={label === 'none' ? 'No label' : label}
+                  onClick={() => onSetLabel(label)}
+                >
+                  {label === 'none' ? (
+                    <XIcon size={12} />
+                  ) : active ? (
+                    <CheckIcon size={12} />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
           <div className="modal-footer">
             {confirmingDelete ? (
               <span className="confirm-group">

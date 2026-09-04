@@ -4,7 +4,7 @@
  */
 
 import type { ClientMessage, Op } from '../../shared/types.js';
-import { LIMITS } from '../../shared/types.js';
+import { LIMITS, isCardLabel } from '../../shared/types.js';
 import { isValidId } from '../../shared/ids.js';
 
 export type ParseResult =
@@ -81,6 +81,11 @@ export function parseOp(value: unknown): Op | null {
     case 'duplicateCard': {
       if (!isValidId(value['cardId']) || !isValidId(value['newCardId'])) return null;
       return { type: 'duplicateCard', cardId: value['cardId'], newCardId: value['newCardId'] };
+    }
+    case 'setCardLabel': {
+      if (!isValidId(value['cardId'])) return null;
+      if (!isCardLabel(value['label'])) return null;
+      return { type: 'setCardLabel', cardId: value['cardId'], label: value['label'] };
     }
     case 'createColumn': {
       if (!isValidId(value['columnId'])) return null;

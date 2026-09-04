@@ -308,6 +308,58 @@ describe('duplicateCard', () => {
   });
 });
 
+describe('setCardLabel', () => {
+  it('sets a label and bumps the version by exactly one', () => {
+    const { server, alice, everyone } = setup();
+    const before = server.state.version;
+
+    alice.propose({ type: 'setCardLabel', cardId: 'cardX', label: 'purple' }, server, everyone);
+    alice.drain();
+
+    expect(server.state.version).toBe(before + 1);
+    expect(server.applied).toBe(1);
+    expect(server.state.cards.find((c) => c.id === 'cardX')?.label).toBe('purple');
+    expect(alice.pending).toHaveLength(0);
+    expect(alice.confirmed).toEqual(server.state);
+  });
+
+  it('converges when two clients label different cards concurrently', () => {
+    const { server, alice, bob, everyone } = setup();
+
+    alice.propose({ type: 'setCardLabel', cardId: 'cardX', label: 'red' }, server, everyone);
+    bob.propose({ type: 'setCardLabel', cardId: 'cardZ', label: 'blue' }, server, everyone);
+    alice.drain();
+    bob.drain();
+
+    expect(alice.pending).toHaveLength(0);
+    expect(bob.pending).toHaveLength(0);
+    // Full equality includes the label field, which canonical() omits.
+    expect(alice.confirmed).toEqual(bob.confirmed);
+    expect(alice.confirmed).toEqual(server.state);
+    expect(server.state.cards.find((c) => c.id === 'cardX')?.label).toBe('red');
+    expect(server.state.cards.find((c) => c.id === 'cardZ')?.label).toBe('blue');
+    expect(server.state.version).toBe(2);
+  });
+
+  it('rejects labeling a card another client already deleted', () => {
+    const { server, alice, bob, everyone } = setup();
+
+    // Bob deletes cardX; the delete reaches the server first.
+    bob.propose({ type: 'deleteCard', cardId: 'cardX' }, server, everyone);
+    // Alice has not seen the delete and optimistically labels the same card.
+    alice.propose({ type: 'setCardLabel', cardId: 'cardX', label: 'green' }, server, everyone);
+
+    alice.drain();
+    bob.drain();
+
+    expect(server.rejected).toBe(1);
+    expect(alice.pending).toHaveLength(0);
+    expect(server.state.cards.some((c) => c.id === 'cardX')).toBe(false);
+    expect(canonical(alice.view())).toEqual(canonical(server.state));
+    expect(canonical(bob.view())).toEqual(canonical(server.state));
+  });
+});
+
 describe('randomized interleaving fuzz', () => {
   // Deterministic PRNG so failures are reproducible.
   function mulberry32(seed: number): () => number {

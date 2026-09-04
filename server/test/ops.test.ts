@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { BoardState, Op } from '../../shared/types.js';
+import type { BoardState, CardLabel, Op } from '../../shared/types.js';
 import { applyOp, cardsInColumn, sortedColumns } from '../../shared/ops.js';
 
 function board(): BoardState {
@@ -282,6 +282,46 @@ describe('duplicateCard', () => {
       newCardId: 'cardA2',
     });
     expect(result).toEqual({ ok: false, reason: 'duplicate_id' });
+  });
+});
+
+describe('setCardLabel', () => {
+  it('sets a card label from the palette', () => {
+    const next = mustApply(board(), { type: 'setCardLabel', cardId: 'cardA1', label: 'green' });
+    expect(next.cards.find((c) => c.id === 'cardA1')?.label).toBe('green');
+  });
+
+  it('leaves other card fields untouched', () => {
+    const next = mustApply(board(), { type: 'setCardLabel', cardId: 'cardB1', label: 'blue' });
+    const card = next.cards.find((c) => c.id === 'cardB1');
+    expect(card?.title).toBe('Started');
+    expect(card?.description).toBe('wip');
+    expect(card?.order).toBe(0);
+  });
+
+  it('clears the label when set to none', () => {
+    const labeled = mustApply(board(), { type: 'setCardLabel', cardId: 'cardA1', label: 'red' });
+    const cleared = mustApply(labeled, { type: 'setCardLabel', cardId: 'cardA1', label: 'none' });
+    expect(cleared.cards.find((c) => c.id === 'cardA1')?.label).toBeUndefined();
+  });
+
+  it('rejects an unknown label value', () => {
+    const result = applyOp(board(), {
+      type: 'setCardLabel',
+      cardId: 'cardA1',
+      label: 'chartreuse' as CardLabel,
+    });
+    expect(result).toEqual({ ok: false, reason: 'invalid_op' });
+  });
+
+  it('rejects setting a label on a missing card', () => {
+    const withoutCard = mustApply(board(), { type: 'deleteCard', cardId: 'cardA1' });
+    const result = applyOp(withoutCard, {
+      type: 'setCardLabel',
+      cardId: 'cardA1',
+      label: 'blue',
+    });
+    expect(result).toEqual({ ok: false, reason: 'card_not_found' });
   });
 });
 

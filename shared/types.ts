@@ -19,6 +19,8 @@ export interface Card {
   description: string;
   /** Zero-based position of the card within its column. Always normalized to 0..n-1. */
   order: number;
+  /** Optional color label from the fixed palette. Absent means 'none'. */
+  label?: CardLabel;
 }
 
 export interface BoardState {
@@ -39,6 +41,7 @@ export type Op =
   | { type: 'editCard'; cardId: string; title?: string; description?: string }
   | { type: 'deleteCard'; cardId: string }
   | { type: 'duplicateCard'; cardId: string; newCardId: string }
+  | { type: 'setCardLabel'; cardId: string; label: CardLabel }
   | { type: 'createColumn'; columnId: string; title: string; index?: number }
   | { type: 'renameColumn'; columnId: string; title: string }
   | { type: 'deleteColumn'; columnId: string }
@@ -90,3 +93,12 @@ export const LIMITS = {
 } as const;
 
 export const DEFAULT_COLUMN_TITLES = ['To do', 'In progress', 'Done'] as const;
+
+/** The fixed label palette. 'none' means the card has no color label. */
+export const CARD_LABELS = ['none', 'red', 'orange', 'yellow', 'green', 'blue', 'purple'] as const;
+
+export type CardLabel = (typeof CARD_LABELS)[number];
+
+export function isCardLabel(value: unknown): value is CardLabel {
+  return typeof value === 'string' && (CARD_LABELS as readonly string[]).includes(value);
+}

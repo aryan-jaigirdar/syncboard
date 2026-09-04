@@ -1,4 +1,5 @@
 import type { Card } from '../../../shared/types';
+import { LABEL_COLORS } from '../../../shared/color';
 
 interface CardItemProps {
   card: Card;
@@ -9,6 +10,7 @@ interface CardItemProps {
 }
 
 export function CardItem({ card, ghost, onPointerDown, onClick }: CardItemProps) {
+  const labelColor = card.label && card.label !== 'none' ? LABEL_COLORS[card.label] : null;
   return (
     <div
       className={ghost ? 'card card-ghost' : 'card'}
@@ -24,6 +26,9 @@ export function CardItem({ card, ghost, onPointerDown, onClick }: CardItemProps)
         }
       }}
     >
+      {labelColor && (
+        <div className="card-label-strip" style={{ background: labelColor }} aria-hidden="true" />
+      )}
       <div className="card-title">{card.title}</div>
       {card.description.trim().length > 0 && (
         <div className="card-desc">{card.description}</div>

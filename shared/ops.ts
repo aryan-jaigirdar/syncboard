@@ -11,7 +11,7 @@
  */
 
 import type { BoardState, Card, Op, RejectReason } from './types.js';
-import { LIMITS } from './types.js';
+import { LIMITS, isCardLabel } from './types.js';
 
 export type ApplyResult =
   | { ok: true; state: BoardState }
@@ -135,8 +135,19 @@ export function applyOp(prev: BoardState, op: Op): ApplyResult {
         description: source.description,
         // Sit the copy directly below the original; renumbering makes it exact.
         order: source.order + 0.5,
+        label: source.label,
       });
       renumberColumnCards(state, source.columnId);
+      return { ok: true, state };
+    }
+
+    case 'setCardLabel': {
+      if (!isCardLabel(op.label)) return fail('invalid_op');
+      const card = state.cards.find((c) => c.id === op.cardId);
+      if (!card) return fail('card_not_found');
+      // 'none' is the absence of a label, so clear the field rather than store it.
+      if (op.label === 'none') delete card.label;
+      else card.label = op.label;
       return { ok: true, state };
     }
 
