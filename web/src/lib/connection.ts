@@ -31,6 +31,7 @@ export class Connection {
   ) {}
 
   start(): void {
+    if (this.ws || this.timer !== null) return;
     this.stopped = false;
     this.dial('connecting');
   }
@@ -43,7 +44,7 @@ export class Connection {
     this.ws = ws;
 
     ws.onopen = () => {
-      if (this.stopped) {
+      if (this.stopped || this.ws !== ws) {
         ws.close();
         return;
       }
@@ -53,6 +54,7 @@ export class Connection {
     };
 
     ws.onmessage = (event) => {
+      if (this.stopped || this.ws !== ws) return;
       if (typeof event.data !== 'string') return;
       let msg: ServerMessage;
       try {
@@ -64,13 +66,17 @@ export class Connection {
     };
 
     ws.onclose = () => {
+      if (this.ws !== ws) return;
       this.ws = null;
       if (this.stopped) return;
       const delay =
         Math.min(MAX_DELAY_MS, BASE_DELAY_MS * 2 ** this.attempts) + Math.random() * 300;
       this.attempts += 1;
       this.handlers.onStatus('reconnecting');
-      this.timer = window.setTimeout(() => this.dial('reconnecting'), delay);
+      this.timer = window.setTimeout(() => {
+        this.timer = null;
+        this.dial('reconnecting');
+      }, delay);
     };
 
     ws.onerror = () => {
@@ -97,7 +103,8 @@ export class Connection {
       this.timer = null;
     }
     this.handlers.onStatus('stopped');
-    this.ws?.close();
+    const ws = this.ws;
     this.ws = null;
+    ws?.close();
   }
 }
