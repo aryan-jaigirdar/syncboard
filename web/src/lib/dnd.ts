@@ -306,7 +306,9 @@ export function useDnd(options: DndOptions) {
       fromColumnId: string,
       fromIndex: number,
     ) => {
-      if (e.button !== 0 || isInteractive(e.target)) return;
+      // Touch gestures scroll the board. The card dialog and column buttons
+      // provide equivalent movement without requiring a precise drag.
+      if (e.pointerType === 'touch' || e.button !== 0 || isInteractive(e.target)) return;
       const rect = e.currentTarget.getBoundingClientRect();
       session.current = {
         kind,

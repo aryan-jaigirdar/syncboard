@@ -8,6 +8,8 @@ interface ColumnProps {
   column: ColumnType;
   /** Position among sorted columns; used as the drag origin index. */
   index: number;
+  columnCount: number;
+  onReorder(index: number): void;
   /** Sorted cards of this column, with a dragged card already filtered out. */
   cards: Card[];
   /** When a dragged card hovers this column: slot index and source card height. */
@@ -24,6 +26,8 @@ interface ColumnProps {
 export function Column({
   column,
   index,
+  columnCount,
+  onReorder,
   cards,
   cardPlaceholder,
   onColumnPointerDown,
@@ -128,6 +132,24 @@ export function Column({
           </button>
         )}
         <span className="column-count">{cards.length}</span>
+        <div className="column-move" role="group" aria-label={`Move ${column.title} column`}>
+          <button
+            className="icon-btn"
+            aria-label={`Move ${column.title} column left`}
+            disabled={index === 0}
+            onClick={() => onReorder(index - 1)}
+          >
+            <span aria-hidden="true">←</span>
+          </button>
+          <button
+            className="icon-btn"
+            aria-label={`Move ${column.title} column right`}
+            disabled={index === columnCount - 1}
+            onClick={() => onReorder(index + 1)}
+          >
+            <span aria-hidden="true">→</span>
+          </button>
+        </div>
         {confirmingDelete ? (
           <span className="confirm-group">
             <button className="btn btn-danger btn-small" onClick={onDelete}>
@@ -166,6 +188,7 @@ export function Column({
               maxLength={LIMITS.titleLength}
               rows={2}
               placeholder="Card title"
+              aria-label={`New card title in ${column.title}`}
               onChange={(e) => setCardDraft(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {

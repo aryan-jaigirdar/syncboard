@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Card, CardLabel } from '../../../shared/types';
+import type { Card, CardLabel, Column } from '../../../shared/types';
 import { CARD_LABELS, LIMITS } from '../../../shared/types';
 import { LABEL_COLORS } from '../../../shared/color';
 import { CheckIcon, CopyIcon, TrashIcon, XIcon } from './icons';
 
 interface CardModalProps {
   card: Card;
+  columns: Column[];
+  cards: Card[];
+  onMove(columnId: string, index: number): void;
   onSave(title: string, description: string): void;
   onSetLabel(label: CardLabel): void;
   onDelete(): void;
@@ -13,24 +16,36 @@ interface CardModalProps {
   onClose(): void;
 }
 
-export function CardModal({ card, onSave, onSetLabel, onDelete, onDuplicate, onClose }: CardModalProps) {
+export function CardModal({
+  card,
+  columns,
+  cards,
+  onMove,
+  onSave,
+  onSetLabel,
+  onDelete,
+  onDuplicate,
+  onClose,
+}: CardModalProps) {
   const [title, setTitle] = useState(card.title);
   const [description, setDescription] = useState(card.description);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [destination, setDestination] = useState(card.columnId);
+  const [position, setPosition] = useState(card.order);
+  const destinationSize = cards.filter((c) => c.columnId === destination && c.id !== card.id).length;
+  const moveIndex = Math.min(position, destinationSize);
+  const canMove = columns.some((c) => c.id === destination) &&
+    (destination !== card.columnId || moveIndex !== card.order);
 
   useEffect(() => {
+    const dialog = dialogRef.current;
+    dialog?.showModal();
     titleRef.current?.focus();
     titleRef.current?.select();
+    return () => dialog?.close();
   }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
 
   const dirty = title !== card.title || description !== card.description;
   const canSave = title.trim().length > 0;
@@ -43,13 +58,22 @@ export function CardModal({ card, onSave, onSetLabel, onDelete, onDuplicate, onC
   }
 
   return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+    <dialog
+      ref={dialogRef}
+      className="modal"
+      aria-label="Edit card"
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+      onClick={(e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        if (e.target === e.currentTarget &&
+            (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom)) {
+          onClose();
+        }
       }}
     >
-      <div className="modal" role="dialog" aria-modal="true" aria-label="Edit card">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -80,7 +104,7 @@ export function CardModal({ card, onSave, onSetLabel, onDelete, onDuplicate, onC
               if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') save();
             }}
           />
-          <span className="modal-label">Label</span>
+          <span className="modal-label">Label (saves immediately)</span>
           <div className="label-picker" role="group" aria-label="Card label">
             {CARD_LABELS.map((label) => {
               const active = currentLabel === label;
@@ -109,6 +133,45 @@ export function CardModal({ card, onSave, onSetLabel, onDelete, onDuplicate, onC
               );
             })}
           </div>
+          <fieldset className="move-card">
+            <legend className="modal-label">Move card</legend>
+            <div className="move-card-controls">
+              <label>
+                <span className="visually-hidden">Destination column</span>
+                <select
+                  value={destination}
+                  onChange={(e) => {
+                    setDestination(e.target.value);
+                    setPosition(cards.filter((c) => c.columnId === e.target.value && c.id !== card.id).length);
+                  }}
+                >
+                  {columns.map((column) => (
+                    <option key={column.id} value={column.id}>{column.title}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="visually-hidden">Position in column</span>
+                <select value={moveIndex} onChange={(e) => setPosition(Number(e.target.value))}>
+                  {Array.from({ length: destinationSize + 1 }, (_, index) => (
+                    <option key={index} value={index}>Position {index + 1}</option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="btn"
+                disabled={!canMove || !canSave}
+                onClick={() => {
+                  if (dirty) onSave(title, description);
+                  onMove(destination, moveIndex);
+                  onClose();
+                }}
+              >
+                Move
+              </button>
+            </div>
+          </fieldset>
           <div className="modal-footer">
             {confirmingDelete ? (
               <span className="confirm-group">
@@ -149,7 +212,6 @@ export function CardModal({ card, onSave, onSetLabel, onDelete, onDuplicate, onC
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </dialog>
   );
 }

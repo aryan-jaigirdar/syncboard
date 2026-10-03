@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Card } from '../../../shared/types';
+import { LIMITS } from '../../../shared/types';
 import { cardsInColumn, sortedColumns } from '../../../shared/ops';
 import { genId } from '../../../shared/ids';
 import { BoardClient } from '../lib/boardClient';
@@ -193,7 +194,7 @@ export function BoardPage({ boardId }: BoardPageProps) {
             {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
           </button>
         </div>
-        <span className={`status status-${snap.status}`}>
+        <span className={`status status-${snap.status}`} role="status">
           <span className="status-dot" />
           {STATUS_LABEL[snap.status]}
         </span>
@@ -206,6 +207,9 @@ export function BoardPage({ boardId }: BoardPageProps) {
       ) : (
         <div
           className="board-scroller"
+          role="region"
+          aria-label="Board columns"
+          tabIndex={0}
           ref={scrollerRef}
           onPointerMove={(e) => sendCursor(e.clientX, e.clientY)}
           onPointerLeave={hideCursor}
@@ -239,6 +243,8 @@ export function BoardPage({ boardId }: BoardPageProps) {
                   key={column.id}
                   column={column}
                   index={columns.findIndex((c) => c.id === column.id)}
+                  columnCount={columns.length}
+                  onReorder={(toIndex) => client.intent({ type: 'reorderColumn', columnId: column.id, toIndex })}
                   cards={columnCards}
                   cardPlaceholder={cardPlaceholder}
                   onColumnPointerDown={onColumnPointerDown}
@@ -268,6 +274,7 @@ export function BoardPage({ boardId }: BoardPageProps) {
                   value={columnDraft}
                   autoFocus
                   placeholder="Column title"
+                  maxLength={LIMITS.titleLength}
                   onChange={(e) => setColumnDraft(e.target.value)}
                   onBlur={commitColumn}
                   onKeyDown={(e) => {
@@ -336,6 +343,9 @@ export function BoardPage({ boardId }: BoardPageProps) {
       {editingCard && (
         <CardModal
           card={editingCard}
+          columns={columns}
+          cards={state?.cards ?? []}
+          onMove={(toColumnId, toIndex) => client.intent({ type: 'moveCard', cardId: editingCard.id, toColumnId, toIndex })}
           onSave={(title, description) =>
             client.intent({ type: 'editCard', cardId: editingCard.id, title, description })
           }
