@@ -8,6 +8,10 @@ Built with TypeScript, React, Node, WebSockets, and SQLite. The core problem is 
 
 ## Try the demo
 
+![Syncboard running a sample mobile release board in the browser](docs/images/desktop.png)
+
+[See the phone-sized browser view](docs/images/mobile.png).
+
 ```sh
 npm ci
 npm run build
