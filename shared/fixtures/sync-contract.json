@@ -1,0 +1,38 @@
+{
+  "initialState": {
+    "id": "fixtureBoard",
+    "version": 0,
+    "columns": [
+      { "id": "todoColumn", "title": "To do", "order": 0 },
+      { "id": "doingColumn", "title": "In progress", "order": 1 },
+      { "id": "doneColumn", "title": "Done", "order": 2 }
+    ],
+    "cards": []
+  },
+  "ops": [
+    { "version": 1, "actorId": "fixtureAlice", "opId": "fixtureOp01", "op": { "type": "createCard", "cardId": "cardAlpha", "columnId": "todoColumn", "title": "Review mobile layout", "description": "Check narrow screens." } },
+    { "version": 2, "actorId": "fixtureBob", "opId": "fixtureOp02", "op": { "type": "createCard", "cardId": "cardBravo", "columnId": "todoColumn", "title": "Offline queue" } },
+    { "version": 3, "actorId": "fixtureAlice", "opId": "fixtureOp03", "op": { "type": "setCardLabel", "cardId": "cardAlpha", "label": "blue" } },
+    { "version": 4, "actorId": "fixtureBob", "opId": "fixtureOp04", "op": { "type": "duplicateCard", "cardId": "cardAlpha", "newCardId": "cardCopy" } },
+    { "version": 5, "actorId": "fixtureAlice", "opId": "fixtureOp05", "op": { "type": "moveCard", "cardId": "cardCopy", "toColumnId": "doingColumn", "toIndex": 0 } },
+    { "version": 6, "actorId": "fixtureBob", "opId": "fixtureOp06", "op": { "type": "editCard", "cardId": "cardBravo", "title": "Add offline queue", "description": "Keep pending edits after relaunch." } },
+    { "version": 7, "actorId": "fixtureAlice", "opId": "fixtureOp07", "op": { "type": "createColumn", "columnId": "reviewColumn", "title": "Review", "index": 2 } },
+    { "version": 8, "actorId": "fixtureBob", "opId": "fixtureOp08", "op": { "type": "reorderColumn", "columnId": "reviewColumn", "toIndex": 0 } },
+    { "version": 9, "actorId": "fixtureAlice", "opId": "fixtureOp09", "op": { "type": "renameColumn", "columnId": "reviewColumn", "title": "Ready for review" } },
+    { "version": 10, "actorId": "fixtureBob", "opId": "fixtureOp10", "op": { "type": "deleteCard", "cardId": "cardAlpha" } },
+    { "version": 11, "actorId": "fixtureAlice", "opId": "fixtureOp11", "op": { "type": "deleteColumn", "columnId": "doneColumn" } }
+  ],
+  "expectedState": {
+    "id": "fixtureBoard",
+    "version": 11,
+    "columns": [
+      { "id": "todoColumn", "title": "To do", "order": 1 },
+      { "id": "doingColumn", "title": "In progress", "order": 2 },
+      { "id": "reviewColumn", "title": "Ready for review", "order": 0 }
+    ],
+    "cards": [
+      { "id": "cardBravo", "columnId": "todoColumn", "title": "Add offline queue", "description": "Keep pending edits after relaunch.", "order": 0 },
+      { "id": "cardCopy", "columnId": "doingColumn", "title": "Review mobile layout", "description": "Check narrow screens.", "order": 0, "label": "blue" }
+    ]
+  }
+}
