@@ -8,7 +8,7 @@
  */
 
 import Database from 'better-sqlite3';
-import type { BoardState, Card, Op } from '../../shared/types.js';
+import type { AppliedOp, BoardState, Card, Op } from '../../shared/types.js';
 import { DEFAULT_COLUMN_TITLES, isCardLabel } from '../../shared/types.js';
 import { genBoardId, genId } from '../../shared/ids.js';
 import { cardsInColumn, sortedColumns } from '../../shared/ops.js';
@@ -57,6 +57,14 @@ CREATE TABLE IF NOT EXISTS cards (
 );
 CREATE INDEX IF NOT EXISTS idx_cards_board ON cards(board_id);
 CREATE INDEX IF NOT EXISTS idx_cards_column ON cards(column_id);
+CREATE TABLE IF NOT EXISTS accepted_ops (
+  board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  actor_id TEXT NOT NULL,
+  op_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  op_json TEXT NOT NULL,
+  PRIMARY KEY (board_id, actor_id, op_id)
+);
 `;
 
 export class BoardStore {
@@ -68,6 +76,17 @@ export class BoardStore {
     this.db.pragma('foreign_keys = ON');
     this.db.exec(SCHEMA);
     this.migrate();
+  }
+
+  /**
+   * Durable receipts prevent retries from replaying edits after a restart or
+   * room eviction. Receipts and board state commit in the same transaction.
+   */
+  acceptedOp(boardId: string, actorId: string, opId: string): { version: number; opJson: string } | null {
+    const row = this.db.prepare(
+      'SELECT version, op_json FROM accepted_ops WHERE board_id = ? AND actor_id = ? AND op_id = ?',
+    ).get(boardId, actorId, opId) as { version: number; op_json: string } | undefined;
+    return row ? { version: row.version, opJson: row.op_json } : null;
   }
 
   /**
@@ -103,6 +122,14 @@ export class BoardStore {
 
   hasBoard(id: string): boolean {
     return this.db.prepare('SELECT 1 FROM boards WHERE id = ?').get(id) !== undefined;
+  }
+
+  hasCardId(id: string): boolean {
+    return this.db.prepare('SELECT 1 FROM cards WHERE id = ?').get(id) !== undefined;
+  }
+
+  hasColumnId(id: string): boolean {
+    return this.db.prepare('SELECT 1 FROM columns WHERE id = ?').get(id) !== undefined;
   }
 
   loadBoard(id: string): BoardState | null {
@@ -143,7 +170,7 @@ export class BoardStore {
    * Persist one accepted op. prev is the state the op was applied to, next is
    * the result (already carrying the bumped version).
    */
-  persist(prev: BoardState, next: BoardState, op: Op): void {
+  persist(prev: BoardState, next: BoardState, op: Op, receipt?: Pick<AppliedOp, 'actorId' | 'opId'>): void {
     const boardId = next.id;
     this.db.transaction(() => {
       switch (op.type) {
@@ -246,6 +273,11 @@ export class BoardStore {
         }
       }
       this.db.prepare('UPDATE boards SET version = ? WHERE id = ?').run(next.version, boardId);
+      if (receipt) {
+        this.db.prepare(
+          'INSERT INTO accepted_ops (board_id, actor_id, op_id, version, op_json) VALUES (?, ?, ?, ?, ?)',
+        ).run(boardId, receipt.actorId, receipt.opId, next.version, JSON.stringify(op));
+      }
     })();
   }
 

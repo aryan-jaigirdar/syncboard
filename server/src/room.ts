@@ -116,7 +116,25 @@ export class Room {
     const client = this.clients.get(ws);
     if (!client) return;
 
-    const result = applyOp(this.state, msg.op);
+    const receipt = this.store.acceptedOp(this.boardId, client.clientId, msg.opId);
+    if (receipt) {
+      if (receipt.opJson === JSON.stringify(msg.op)) {
+        send(ws, { type: 'ack', opId: msg.opId, version: receipt.version });
+      } else {
+        // An id identifies one intent. Reusing it for a different intent is an error.
+        send(ws, { type: 'reject', opId: msg.opId, reason: 'invalid_op', version: this.version });
+      }
+      return;
+    }
+
+    // Entity ids are global primary keys in SQLite. A collision on another
+    // board must be rejected before insertion, rather than throwing in WS handling.
+    const op = msg.op;
+    const duplicate =
+      (op.type === 'createCard' && this.store.hasCardId(op.cardId)) ||
+      (op.type === 'duplicateCard' && this.store.hasCardId(op.newCardId)) ||
+      (op.type === 'createColumn' && this.store.hasColumnId(op.columnId));
+    const result = duplicate ? { ok: false as const, reason: 'duplicate_id' as const } : applyOp(this.state, op);
     if (!result.ok) {
       send(ws, {
         type: 'reject',
@@ -130,7 +148,7 @@ export class Room {
     const prev = this.state;
     const next = result.state;
     next.version = prev.version + 1;
-    this.store.persist(prev, next, msg.op);
+    this.store.persist(prev, next, msg.op, { actorId: client.clientId, opId: msg.opId });
     this.state = next;
 
     const applied: AppliedOp = {

@@ -195,6 +195,12 @@ export class BoardClient {
         this.emitBoard();
         break;
       }
+      case 'ack': {
+        this.pending = this.pending.filter((p) => p.opId !== msg.opId);
+        if (this.confirmed && msg.version > this.confirmed.version) this.requestResync();
+        this.emitBoard();
+        break;
+      }
       case 'presence': {
         this.peers = msg.peers;
         for (const id of [...this.cursors.keys()]) {

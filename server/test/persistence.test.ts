@@ -30,6 +30,33 @@ function applyAndPersist(store: BoardStore, state: BoardState, op: Op): BoardSta
 }
 
 describe('BoardStore', () => {
+  it('commits receipts with state and rolls back both when receipt insertion fails', () => {
+    let store = new BoardStore(dbPath);
+    const initial = store.createBoard();
+    const columnId = initial.columns[0]!.id;
+    const op: Op = { type: 'renameColumn', columnId, title: 'Accepted' };
+    const accepted = applyOp(initial, op);
+    if (!accepted.ok) throw new Error('expected rename to apply');
+    accepted.state.version = 1;
+    const receipt = { actorId: 'clientAlice', opId: 'retryOp1' };
+    store.persist(initial, accepted.state, op, receipt);
+    store.close();
+
+    store = new BoardStore(dbPath);
+    expect(store.acceptedOp(initial.id, receipt.actorId, receipt.opId)).toEqual({
+      version: 1, opJson: JSON.stringify(op),
+    });
+    expect(store.acceptedOp(initial.id, 'clientBob', receipt.opId)).toBeNull();
+    const changed: Op = { type: 'renameColumn', columnId, title: 'Must roll back' };
+    const next = applyOp(accepted.state, changed);
+    if (!next.ok) throw new Error('expected rename to apply');
+    next.state.version = 2;
+    expect(() => store.persist(accepted.state, next.state, changed, receipt)).toThrow();
+    expect(store.loadBoard(initial.id)).toEqual(accepted.state);
+    expect(store.acceptedOp(initial.id, receipt.actorId, receipt.opId)?.opJson).toBe(JSON.stringify(op));
+    store.close();
+  });
+
   it('creates a board with the default columns at version 0', () => {
     const store = new BoardStore(dbPath);
     const state = store.createBoard();

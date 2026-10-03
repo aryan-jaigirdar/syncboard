@@ -6,6 +6,9 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AddressInfo } from 'node:net';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import WebSocket from 'ws';
 import type {
   AppliedOp,
@@ -47,8 +50,8 @@ class TestClient {
 
   private constructor(private readonly ws: WebSocket) {}
 
-  static async connect(): Promise<TestClient> {
-    const ws = new WebSocket(wsUrl);
+  static async connect(url = wsUrl): Promise<TestClient> {
+    const ws = new WebSocket(url);
     const client = new TestClient(ws);
     ws.on('message', (data) => {
       const msg = JSON.parse(data.toString()) as ServerMessage;
@@ -142,6 +145,119 @@ describe('HTTP API', () => {
 });
 
 describe('WebSocket protocol', () => {
+  it('rejects entity ids used on another board without throwing or advancing the board', async () => {
+    const boardId = await createBoard();
+    const otherBoard = await createBoard();
+    const a = await TestClient.connect();
+    const b = await TestClient.connect();
+    try {
+      a.send({ type: 'join', boardId, clientId: 'clientAAA', name: 'Alice' });
+      const first = await a.next(isSnapshot);
+      b.send({ type: 'join', boardId: otherBoard, clientId: 'clientBBB', name: 'Bob' });
+      const second = await b.next(isSnapshot);
+      if (!isSnapshot(first) || !isSnapshot(second)) throw new Error('expected snapshots');
+      a.send({ type: 'op', opId: 'createSame1', baseVersion: 0,
+        op: { type: 'createCard', cardId: 'globalCard1', columnId: first.state.columns[0]!.id, title: 'First board' } });
+      await a.next(isOps);
+      b.send({ type: 'op', opId: 'createSame2', baseVersion: 0,
+        op: { type: 'createCard', cardId: 'globalCard1', columnId: second.state.columns[0]!.id, title: 'Second board' } });
+      expect(await b.next((m) => m.type === 'reject')).toMatchObject({ reason: 'duplicate_id', version: 0 });
+      b.send({ type: 'op', opId: 'createSame3', baseVersion: 0,
+        op: { type: 'createColumn', columnId: first.state.columns[0]!.id, title: 'Conflicting column' } });
+      expect(await b.next((m) => m.type === 'reject')).toMatchObject({ reason: 'duplicate_id', version: 0 });
+      expect(store.loadBoard(otherBoard)).toEqual(second.state);
+      expect(store.loadBoard(boardId)?.cards).toHaveLength(1);
+    } finally {
+      a.close();
+      b.close();
+    }
+  });
+
+  it('acknowledges retries once, rejects changed intent ids, and scopes ids to the actor', async () => {
+    const boardId = await createBoard();
+    const a = await TestClient.connect();
+    const b = await TestClient.connect();
+    try {
+      a.send({ type: 'join', boardId, clientId: 'clientAAA', name: 'Alice' });
+      const snapshot = await a.next(isSnapshot);
+      if (!isSnapshot(snapshot)) throw new Error('expected snapshot');
+      const columnId = snapshot.state.columns[0]!.id;
+      const message: Extract<ClientMessage, { type: 'op' }> = {
+        type: 'op', opId: 'sameOp01', baseVersion: 0,
+        op: { type: 'renameColumn', columnId, title: 'Alice renamed this' },
+      };
+      a.send(message);
+      await a.next(isOps);
+      a.send(message);
+      expect(await a.next((m) => m.type === 'ack')).toEqual({ type: 'ack', opId: 'sameOp01', version: 1 });
+      a.send({ ...message, op: { type: 'renameColumn', columnId, title: 'Reused id' } });
+      expect(await a.next((m) => m.type === 'reject')).toMatchObject({ reason: 'invalid_op', version: 1 });
+
+      b.send({ type: 'join', boardId, clientId: 'clientBBB', name: 'Bob' });
+      await b.next(isSnapshot);
+      b.send({ ...message, op: { type: 'renameColumn', columnId, title: 'Bob uses his own id' } });
+      const applied = await b.next(isOps);
+      if (!isOps(applied)) throw new Error('expected op');
+      expect(applied.ops[0]?.version).toBe(2);
+      expect(store.loadBoard(boardId)?.columns[0]?.title).toBe('Bob uses his own id');
+    } finally {
+      a.close();
+      b.close();
+    }
+  });
+
+  it('preserves a later peer edit when an acknowledged intent is resent after a server restart', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'syncboard-restart-'));
+    const dbPath = path.join(dir, 'board.db');
+    let durableStore = new BoardStore(dbPath);
+    let restartServer = createSyncboardServer({ store: durableStore });
+    const listen = async () => {
+      await new Promise<void>((resolve) => restartServer.httpServer.listen(0, '127.0.0.1', resolve));
+      const { port } = restartServer.httpServer.address() as AddressInfo;
+      return `ws://127.0.0.1:${port}/ws`;
+    };
+    try {
+      const original = durableStore.createBoard();
+      const first = await TestClient.connect(await listen());
+      first.send({ type: 'join', boardId: original.id, clientId: 'clientAAA', name: 'Alice' });
+      await first.next(isSnapshot);
+      const message: Extract<ClientMessage, { type: 'op' }> = {
+        type: 'op', opId: 'retryOp1', baseVersion: 0,
+        op: { type: 'renameColumn', columnId: original.columns[0]!.id, title: 'Earlier edit' },
+      };
+      first.send(message);
+      await first.next(isOps);
+      // A subsequent accepted edit must survive an old resend.
+      const peer = await TestClient.connect(`ws://127.0.0.1:${(restartServer.httpServer.address() as AddressInfo).port}/ws`);
+      peer.send({ type: 'join', boardId: original.id, clientId: 'clientBBB', name: 'Bob' });
+      await peer.next(isSnapshot);
+      peer.send({ ...message, opId: 'laterOp1', op: { type: 'renameColumn', columnId: original.columns[0]!.id, title: 'Later peer edit' } });
+      await peer.next(isOps);
+      await restartServer.close();
+      durableStore.close();
+
+      durableStore = new BoardStore(dbPath);
+      restartServer = createSyncboardServer({ store: durableStore });
+      const rejoined = await TestClient.connect(await listen());
+      rejoined.send({ type: 'join', boardId: original.id, clientId: 'clientAAA', name: 'Alice', sinceVersion: 0 });
+      const snapshot = await rejoined.next(isSnapshot);
+      if (!isSnapshot(snapshot)) throw new Error('expected snapshot after log loss');
+      expect(snapshot.state.version).toBe(2);
+      rejoined.send(message);
+      expect(await rejoined.next((m) => m.type === 'ack')).toEqual({ type: 'ack', opId: 'retryOp1', version: 1 });
+      rejoined.send({ type: 'join', boardId: original.id, clientId: 'clientAAA', name: 'Alice' });
+      const afterRetry = await rejoined.next(isSnapshot);
+      if (!isSnapshot(afterRetry)) throw new Error('expected resync snapshot');
+      expect(afterRetry.state).toEqual(snapshot.state);
+      expect(afterRetry.state.columns[0]?.title).toBe('Later peer edit');
+      rejoined.close();
+    } finally {
+      await restartServer.close();
+      durableStore.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('rejects joining an unknown board', async () => {
     const client = await TestClient.connect();
     client.send({ type: 'join', boardId: 'missing9', clientId: 'clientX1', name: 'Ghost' });

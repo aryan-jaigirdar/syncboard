@@ -79,6 +79,8 @@ export type ClientMessage =
 export type ServerMessage =
   | { type: 'snapshot'; state: BoardState; peers: Peer[] }
   | { type: 'ops'; ops: AppliedOp[]; catchup?: boolean }
+  /** A retry of an already accepted op. It must not be applied again. */
+  | { type: 'ack'; opId: string; version: number }
   | { type: 'reject'; opId: string; reason: RejectReason; version: number }
   | { type: 'presence'; peers: Peer[] }
   | { type: 'cursor'; clientId: string; x: number; y: number; visible: boolean }
